@@ -23,7 +23,7 @@ program
     'Offline security scanner for Power Apps Code Apps.\n' +
     'Detects CSP and DLP violations before they reach the Power Apps Player sandbox.'
   )
-  .version('0.1.0');
+  .version('1.0.0');
 
 program.addCommand(fetchCommand());
 program.addCommand(runCommand());
