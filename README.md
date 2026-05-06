@@ -1,8 +1,10 @@
 # pac-scan
 
-Offline security scanner for **[Power Apps Code Apps](https://learn.microsoft.com/en-us/power-apps/developer/code-apps/overview)** (React + Vite).
+**Build-time security scanner for [Power Apps Code Apps](https://learn.microsoft.com/en-us/power-apps/developer/code-apps/overview)** (React / Vue + Vite).
 
-Catches CSP and DLP policy violations **at build time** — before they surface as silent runtime failures inside the Power Apps Player sandbox.
+> **[Solution Checker](https://learn.microsoft.com/power-apps/maker/data-platform/use-powerapps-checker) does not scan Code Apps code.** Canvas apps, model-driven apps, and flows are covered — but Code Apps ship as custom JavaScript bundles that Solution Checker cannot analyse. pac-scan fills that gap.
+
+pac-scan catches DLP violations, CSP violations, hardcoded secrets, insecure fetch calls, and vulnerable dependencies **before they surface as silent runtime failures** inside the Power Apps Player sandbox.
 
 ---
 
@@ -11,6 +13,16 @@ Catches CSP and DLP policy violations **at build time** — before they surface 
 [Power Apps Code Apps](https://learn.microsoft.com/en-us/power-apps/developer/code-apps/overview) let developers bring Power Apps capabilities into custom web apps built in a code-first IDE. You build locally with frameworks like React or Vue, then publish and host the app in Power Platform — where it runs under the platform's **managed policies**: DLP, CSP, Conditional Access, and connector permissions.
 
 Because those policies are set by Power Platform admins (not developers), violations are silent at development time and only surface as runtime failures inside the Power Apps Player sandbox. pac-scan closes that gap by pulling a snapshot of the live policies and running all checks **offline, at build time**.
+
+### What pac-scan catches at a glance
+
+| Rule | What it detects | Severity | Impact if missed |
+|---|---|---|---|
+| **PAC001** | Hardcoded secrets (API keys, tokens, GUIDs) | CRITICAL | Credential leak in cached bundles |
+| **PAC002** | `fetch()` / XHR to non-allowlisted domains | HIGH | Silent network failure at runtime |
+| **PAC003** | Blocked / non-business connector usage | CRITICAL | App crashes with no fallback |
+| **PAC004** | `eval()`, `innerHTML`, permissive CSP headers | HIGH | CSP rejection inside Player sandbox |
+| **PAC005** | npm audit critical/high advisories | CRITICAL | Exploitable dependency in production bundle |
 
 ---
 
@@ -34,7 +46,11 @@ Power Apps Code Apps run inside the Power Apps Player, a tightly sandboxed ifram
 | **DLP policies** | Which connectors an app may use. An admin can block a connector at any time — your app stops working with no build-time warning. |
 | **CSP directives** | Which domains `fetch()` / XHR can reach, which script sources are allowed, and which domains may embed the player. |
 
-Both layers are configured by Power Platform admins, not developers. pac-scan bridges that gap: it pulls a snapshot of the live policies once, then every subsequent scan runs completely offline — no network, no telemetry, no data leaving the boundary.
+Both layers are configured by Power Platform admins, not developers.
+
+**Solution Checker** — the standard Power Platform static analysis tool — covers canvas apps, model-driven apps, and Power Automate flows. However, **it does not analyse Code Apps source code** because Code Apps are custom JavaScript/TypeScript bundles built outside the platform's low-code authoring surface.
+
+pac-scan fills that gap: it pulls a snapshot of the live policies once, then every subsequent scan runs completely offline — no network, no telemetry, no data leaving the boundary.
 
 ---
 
