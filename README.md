@@ -66,7 +66,7 @@ pac auth create
 # To verify: pac auth list  (look for an entry with a * marking it active)
 
 # 3. Install pac-scan
-npm install --save-dev pac-scan
+npm install --save-dev github:Kunal-Murarka/powerapps-codeapps-pac-scan
 ```
 
 Next, create `pac-scan.config.yaml` in your project root (see [Configuration](#configuration-pac-scanconfigyaml) for the full reference). Minimal example:
