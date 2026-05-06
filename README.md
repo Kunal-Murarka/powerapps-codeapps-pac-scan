@@ -1,15 +1,27 @@
 # pac-scan
 
-Offline security scanner for **Power Apps Code Apps** (React + Vite).
+Offline security scanner for **[Power Apps Code Apps](https://learn.microsoft.com/en-us/power-apps/developer/code-apps/overview)** (React + Vite).
 
 Catches CSP and DLP policy violations **at build time** — before they surface as silent runtime failures inside the Power Apps Player sandbox.
 
 ---
 
+## What are Code Apps?
+
+[Power Apps Code Apps](https://learn.microsoft.com/en-us/power-apps/developer/code-apps/overview) let developers bring Power Apps capabilities into custom web apps built in a code-first IDE. You build locally with frameworks like React or Vue, then publish and host the app in Power Platform — where it runs under the platform's **managed policies**: DLP, CSP, Conditional Access, and connector permissions.
+
+Because those policies are set by Power Platform admins (not developers), violations are silent at development time and only surface as runtime failures inside the Power Apps Player sandbox. pac-scan closes that gap by pulling a snapshot of the live policies and running all checks **offline, at build time**.
+
+---
+
 ## Prerequisites
 
-- **Node.js 18+**
-- **[pac CLI](https://learn.microsoft.com/power-platform/developer/cli/introduction)** — required only for `pac-scan fetch`. All other commands are fully offline.
+| Requirement | Notes |
+|---|---|
+| **Node.js 18+ (LTS)** | [Download](https://nodejs.org/) |
+| **pac CLI** | Required only for `pac-scan fetch`. Install: `npm install -g @microsoft/powerplatform-cli` · [Docs](https://learn.microsoft.com/power-platform/developer/cli/introduction) |
+| **Code Apps enabled** | A Power Platform admin must enable Code Apps on the target environment: Admin Centre → Environments → select env → Settings → Features → **Enable code apps**. |
+| **Power Apps Premium licence** | End users running code apps require a [Power Apps Premium licence](https://www.microsoft.com/power-platform/products/power-apps/pricing). |
 
 ---
 
@@ -29,17 +41,45 @@ Both layers are configured by Power Platform admins, not developers. pac-scan br
 ## Quick start
 
 ```bash
-# 1. Install
-npm install --save-dev pac-scan
+# 1. Install pac CLI (one-time — skip if already installed)
+npm install -g @microsoft/powerplatform-cli
 
-# 2. Authenticate pac CLI (one-time)
+# 2. Authenticate pac CLI (one-time — opens a browser login)
 pac auth create
+# Follow the browser prompt to sign in with your Power Platform account.
+# To verify: pac auth list  (look for an entry with a * marking it active)
 
-# 3. Pull live policies
+# 3. Install pac-scan
+npm install --save-dev pac-scan
+```
+
+Next, create `pac-scan.config.yaml` in your project root (see [Configuration](#configuration-pac-scanconfigyaml) for the full reference). Minimal example:
+
+```yaml
+default_environment: prod
+
+environments:
+  prod:
+    dlp_snapshot:  .pac-scan/current/prod.json
+    csp_snapshot:  .pac-scan/current/prod.json
+    environment_url: https://your-org.crm.dynamics.com/
+
+fail_on_severity:
+  prod: MEDIUM
+
+scan_paths:      [src]
+scan_extensions: [.ts, .tsx, .js, .jsx]
+```
+
+```bash
+# 4. Pull live policies (writes .pac-scan/current/prod.json)
 npx pac-scan fetch --env prod
 
-# 4. Scan
+# 5. Scan
 npx pac-scan run --env prod
+
+# Not sure if everything is set up correctly? Run the validator first:
+npx pac-scan validate
 ```
 
 ---
@@ -65,7 +105,11 @@ Options:
 | `--config <path>` | auto-detected | Path to `pac-scan.config.yaml` |
 | `--verbose` | false | Print detailed fetch progress |
 
-Requires the [pac CLI](https://learn.microsoft.com/power-platform/developer/cli/introduction) to be installed and authenticated (`pac auth create`).
+Requires the pac CLI to be installed and authenticated:
+```bash
+npm install -g @microsoft/powerplatform-cli
+pac auth create   # opens a browser — sign in with your Power Platform account
+```
 
 ---
 
@@ -97,6 +141,8 @@ Exit code 0 = PASS, exit code 1 = FAIL or error.
 ### `pac-scan diff`
 
 Compares two snapshots for the same environment, showing policy changes between dates. Useful for answering "why did my scan start failing after the admin changed the DLP policy?"
+
+> **Note:** `diff` requires at least two separate `pac-scan fetch` runs on different days. On the first fetch, both `--from` and `--to` will resolve to the same file and no diff is shown. Commit the `.pac-scan/snapshots/` directory to build up history over time.
 
 ```bash
 pac-scan diff --env prod --from 2026-05-01 --to 2026-05-05
@@ -156,6 +202,8 @@ Checks:
 
 Place this file in your project root (pac-scan searches upward from `cwd` to find it):
 
+> **Finding your `environment_url`:** Go to [Power Platform admin centre](https://admin.powerplatform.microsoft.com/) → Environments → select your environment → copy the **Environment URL** (e.g. `https://orgname.crm.dynamics.com/`).
+
 ```yaml
 default_environment: prod
 
@@ -164,7 +212,7 @@ environments:
     dlp_snapshot:  .pac-scan/current/dev.json
     csp_snapshot:  .pac-scan/current/dev.json
     environment_url: https://org-dev.crm.dynamics.com/
-    # environment_id: 00000000-0000-0000-0000-000000000000  # optional GUID override
+    # environment_id: 00000000-0000-0000-0000-000000000000  # optional: skip pac org list lookup
   uat:
     dlp_snapshot:  .pac-scan/current/uat.json
     csp_snapshot:  .pac-scan/current/uat.json
@@ -210,7 +258,7 @@ To skip in an emergency: `git commit --no-verify`
 
 See [examples/azure-devops-pipeline.yml](examples/azure-devops-pipeline.yml) for the full 4-stage pipeline.
 
-Quick reference — add these two tasks to any existing pipeline:
+Quick reference — add these two steps to any existing pipeline:
 
 ```yaml
 - script: npm install -g pac-scan
@@ -225,7 +273,28 @@ Quick reference — add these two tasks to any existing pipeline:
     outputPath: $(Build.ArtifactStagingDirectory)/scan-report.json
 ```
 
-The `PACSecurityScan@1` task lives in `azure-devops-task/`. Build it (`npm run build` in that folder) and upload the extension to your Azure DevOps organisation.
+**To publish the `PACSecurityScan@1` task to your Azure DevOps organisation:**
+
+```bash
+# 1. Install the extension packaging tool
+npm install -g tfx-cli
+
+# 2. Build the task
+cd azure-devops-task
+npm install
+npm run build
+
+# 3. Create a publisher at https://marketplace.visualstudio.com/manage/publishers
+#    then set PUBLISHER to your publisher ID below
+
+# 4. Package the extension (creates a .vsix file)
+tfx extension create --manifest-globs vss-extension.json
+
+# 5. Publish (or upload the .vsix manually via the Marketplace portal)
+tfx extension publish --publisher <YOUR_PUBLISHER_ID>
+```
+
+Alternatively, copy the `azure-devops-task/` folder directly into your pipeline repository and reference it as a local task by setting `task.json`'s `execution.Node20.target` to the correct relative path.
 
 ---
 
@@ -245,7 +314,31 @@ Quick reference — add this step to any job:
     output-path: ./pac-scan-report.json
 ```
 
-The action lives in `github-action/`. Push it as its own GitHub repository and reference it by org/repo@tag.
+**To publish the action so workflows can reference it:**
+
+```bash
+# 1. Build the action
+cd github-action
+npm install
+npm run build
+
+# 2. Create a new GitHub repository for the action
+#    e.g. your-org/pac-scan-action
+gh repo create your-org/pac-scan-action --public
+
+# 3. Copy the action files into that repo and push
+cp -r github-action/. /path/to/pac-scan-action/
+cd /path/to/pac-scan-action
+git init && git add -A
+git commit -m "feat: initial release v1"
+git tag v1
+git remote add origin https://github.com/your-org/pac-scan-action.git
+git push origin main --tags
+```
+
+Then reference it in your workflow as `uses: your-org/pac-scan-action@v1`.
+
+> **Tip:** The `dist/` folder must be committed to the action repo (GitHub Actions runs the compiled JS directly — it does not run `npm install`). Add `!dist/` to the action repo's `.gitignore` to ensure it is included.
 
 ---
 
@@ -445,10 +538,22 @@ The `vscode-extension/` folder contains a full VS Code extension that:
 
 **To build and install locally:**
 ```bash
+# 1. Install the VS Code extension packaging tool
+npm install -g @vscode/vsce
+
+# 2. Build the extension
 cd vscode-extension
 npm install
 npm run build
-# Then in VS Code: Extensions → Install from VSIX (after packaging with vsce)
+
+# 3. Package into a .vsix file
+vsce package
+# Creates: pac-scan-vscode-0.1.0.vsix
+
+# 4. Install in VS Code
+# Extensions panel (Ctrl+Shift+X) → ⋯ menu → Install from VSIX → select the .vsix file
+# Or from the terminal:
+code --install-extension pac-scan-vscode-0.1.0.vsix
 ```
 
 ---

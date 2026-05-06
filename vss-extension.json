@@ -1,0 +1,36 @@
+{
+  "manifestVersion": 1,
+  "id": "powerapps-codeapps-pac-scan",
+  "name": "Power Apps Code App Security Scanner",
+  "version": "1.0.0",
+  "publisher": "your-publisher-id",
+  "description": "Offline security scanner for Power Apps Code Apps — catches DLP violations, CSP violations, hardcoded secrets, insecure fetch calls, and dependency vulnerabilities at build time.",
+  "targets": [
+    {
+      "id": "Microsoft.VisualStudio.Services"
+    }
+  ],
+  "categories": [
+    "Azure Pipelines"
+  ],
+  "icons": {
+    "default": "images/extension-icon.png"
+  },
+  "files": [
+    {
+      "path": "azure-devops-task"
+    }
+  ],
+  "contributions": [
+    {
+      "id": "PACSecurityScan",
+      "type": "ms.vss-distributed-task.task",
+      "targets": [
+        "ms.vss-distributed-task.tasks"
+      ],
+      "properties": {
+        "name": "azure-devops-task"
+      }
+    }
+  ]
+}
