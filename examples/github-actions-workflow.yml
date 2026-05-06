@@ -1,0 +1,222 @@
+# github-actions-workflow.yml
+#
+# Complete GitHub Actions CI/CD workflow for a Power Apps Code App.
+#
+# Workflow flow:
+#   fetch-policy → security-scan → deploy-dev → deploy-uat → deploy-prod
+#
+# Prerequisites:
+#   1. Add pac-scan as a devDependency, or install it globally in the workflow.
+#   2. Copy the github-action/ folder to your-org/pac-scan-action repo and
+#      replace 'your-org/pac-scan-action@v1' with the real reference below.
+#   3. Store these secrets in GitHub (Settings → Secrets → Actions):
+#        PAC_APP_ID, PAC_CLIENT_SECRET, PAC_TENANT_ID
+#        DEV_ENVIRONMENT_URL, UAT_ENVIRONMENT_URL, PROD_ENVIRONMENT_URL
+#   4. Create 'uat' and 'production' GitHub Environments with required reviewers
+#      to gate the UAT and Production deploys.
+
+name: Power Apps Security Scan
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 1: Fetch Policy Snapshot
+  # Pulls live DLP/CSP policies from Power Platform and uploads them as an
+  # artifact so downstream jobs don't need a pac CLI auth step.
+  # ────────────────────────────────────────────────────────────────────────────
+  fetch-policy:
+    name: Refresh Policy Snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install pac CLI
+        run: npm install -g @microsoft/powerplatform-cli
+
+      - name: Install pac-scan CLI
+        run: npm install -g pac-scan
+
+      - name: Authenticate pac CLI
+        run: |
+          pac auth create \
+            --applicationId ${{ secrets.PAC_APP_ID }} \
+            --clientSecret ${{ secrets.PAC_CLIENT_SECRET }} \
+            --tenant ${{ secrets.PAC_TENANT_ID }}
+
+      - name: Fetch Policy Snapshot
+        uses: your-org/pac-scan-action@v1
+        with:
+          command: fetch
+          environment: prod
+
+      - name: Upload Snapshot Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-snapshot
+          path: .pac-scan/current/
+          # Snapshots are short-lived — don't cache them for longer than needed
+          retention-days: 1
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 2: Security Scan
+  # Runs all five pac-scan rules (PAC001–PAC005) against source code offline,
+  # using the snapshot fetched in the previous job.
+  # ────────────────────────────────────────────────────────────────────────────
+  security-scan:
+    name: Security Scan
+    needs: fetch-policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install pac-scan CLI
+        run: npm install -g pac-scan
+
+      - name: Download Policy Snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: policy-snapshot
+          path: .pac-scan/current/
+
+      - name: Run Security Scan
+        id: scan
+        uses: your-org/pac-scan-action@v1
+        with:
+          command: run
+          environment: prod
+          fail-on-severity: HIGH
+          output-path: ./pac-scan-report.json
+
+      - name: Upload Scan Report
+        # Always upload so the report is available even when the scan fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-report
+          path: ./pac-scan-report.json
+          retention-days: 30
+
+      # Optionally surface the result in the workflow summary
+      - name: Report Result
+        if: always()
+        run: |
+          echo "### PAC Scan Result: ${{ steps.scan.outputs.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "Report: ${{ steps.scan.outputs.report-path }}" >> $GITHUB_STEP_SUMMARY
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 3: Deploy to Dev
+  # Only runs when the security scan passes. Uses an unmanaged solution import
+  # so developers can continue iterating in the Dev environment.
+  # ────────────────────────────────────────────────────────────────────────────
+  deploy-dev:
+    name: Deploy to Dev
+    needs: security-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install pac CLI
+        run: npm install -g @microsoft/powerplatform-cli
+
+      - name: Authenticate pac CLI
+        run: |
+          pac auth create \
+            --applicationId ${{ secrets.PAC_APP_ID }} \
+            --clientSecret ${{ secrets.PAC_CLIENT_SECRET }} \
+            --tenant ${{ secrets.PAC_TENANT_ID }}
+
+      - name: Deploy to Dev (Unmanaged)
+        run: |
+          pac solution import \
+            --path ${{ github.workspace }}/solution.zip \
+            --environment ${{ secrets.DEV_ENVIRONMENT_URL }}
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 4: Deploy to UAT
+  # Requires human approval via the 'uat' GitHub Environment. Uses a managed
+  # solution import to enforce ALM best practices.
+  # ────────────────────────────────────────────────────────────────────────────
+  deploy-uat:
+    name: Deploy to UAT
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    # The 'uat' environment must have required reviewers configured in
+    # Settings → Environments → uat → Protection rules
+    environment: uat
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install pac CLI
+        run: npm install -g @microsoft/powerplatform-cli
+
+      - name: Authenticate pac CLI
+        run: |
+          pac auth create \
+            --applicationId ${{ secrets.PAC_APP_ID }} \
+            --clientSecret ${{ secrets.PAC_CLIENT_SECRET }} \
+            --tenant ${{ secrets.PAC_TENANT_ID }}
+
+      - name: Deploy to UAT (Managed)
+        run: |
+          pac solution import \
+            --path ${{ github.workspace }}/solution.zip \
+            --environment ${{ secrets.UAT_ENVIRONMENT_URL }} \
+            --managed true
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 5: Deploy to Production
+  # Requires human approval via the 'production' GitHub Environment.
+  # ────────────────────────────────────────────────────────────────────────────
+  deploy-prod:
+    name: Deploy to Production
+    needs: deploy-uat
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install pac CLI
+        run: npm install -g @microsoft/powerplatform-cli
+
+      - name: Authenticate pac CLI
+        run: |
+          pac auth create \
+            --applicationId ${{ secrets.PAC_APP_ID }} \
+            --clientSecret ${{ secrets.PAC_CLIENT_SECRET }} \
+            --tenant ${{ secrets.PAC_TENANT_ID }}
+
+      - name: Deploy to Production (Managed)
+        run: |
+          pac solution import \
+            --path ${{ github.workspace }}/solution.zip \
+            --environment ${{ secrets.PROD_ENVIRONMENT_URL }} \
+            --managed true

@@ -1,0 +1,101 @@
+{
+  "name": "pac-scan-vscode",
+  "displayName": "PAC Scan — Power Apps Security Scanner",
+  "description": "Offline security scanner for Power Apps Code Apps. Catches CSP and DLP policy violations at development time — before they reach the Power Apps Player sandbox.",
+  "version": "0.1.0",
+  "publisher": "pac-scan",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "power-platform",
+    "power-apps",
+    "security",
+    "csp",
+    "dlp",
+    "scanner"
+  ],
+  "activationEvents": [
+    "workspaceContains:pac-scan.config.yaml"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "pac-scan.runScan",
+        "title": "PAC: Run Security Scan",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "pac-scan.runScanFile",
+        "title": "PAC: Scan This File",
+        "icon": "$(search)"
+      },
+      {
+        "command": "pac-scan.fetchSnapshot",
+        "title": "PAC: Refresh Policy Snapshot",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "pac-scan.showReport",
+        "title": "PAC: Show Last Report",
+        "icon": "$(graph)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "pac-scan.runScanFile",
+          "when": "resourceExtname == .ts || resourceExtname == .tsx",
+          "group": "navigation@99"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "pac-scan.runScanFile",
+          "when": "resourceExtname == .ts || resourceExtname == .tsx",
+          "group": "navigation@99"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "pac-scan.runScan"
+        },
+        {
+          "command": "pac-scan.runScanFile",
+          "when": "resourceExtname == .ts || resourceExtname == .tsx"
+        },
+        {
+          "command": "pac-scan.fetchSnapshot"
+        },
+        {
+          "command": "pac-scan.showReport"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "PAC Scan",
+      "properties": {
+        "pac-scan.environment": {
+          "type": "string",
+          "default": "",
+          "description": "Override the target environment (e.g. dev, uat, prod). Leave empty to use default_environment from pac-scan.config.yaml."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.5.0"
+  }
+}

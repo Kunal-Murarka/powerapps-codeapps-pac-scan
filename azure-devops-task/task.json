@@ -1,0 +1,67 @@
+{
+  "id": "e4b2f8a1-5c3d-4e7b-9a0f-2d1c3b4e5a6f",
+  "name": "PACSecurityScan",
+  "friendlyName": "Power Apps Code App Security Scan",
+  "description": "Scans Power Apps Code App source for DLP violations, CSP violations, hardcoded secrets, insecure fetch calls, and dependency vulnerabilities",
+  "category": "Test",
+  "author": "pac-scan",
+  "helpUrl": "https://aka.ms/pac-scan-docs",
+  "version": { "Major": 1, "Minor": 0, "Patch": 0 },
+  "minimumAgentVersion": "2.206.1",
+  "instanceNameFormat": "PAC Security Scan ($(environment))",
+  "inputs": [
+    {
+      "name": "command",
+      "type": "pickList",
+      "label": "Command",
+      "defaultValue": "run",
+      "required": true,
+      "helpMarkDown": "Choose **Fetch Policy Snapshot** to pull the latest DLP/CSP policies from Power Platform, or **Run Security Scan** to analyse source code against the saved snapshot.",
+      "options": {
+        "fetch": "Fetch Policy Snapshot",
+        "run": "Run Security Scan"
+      }
+    },
+    {
+      "name": "environment",
+      "type": "pickList",
+      "label": "Target Environment",
+      "defaultValue": "prod",
+      "required": true,
+      "helpMarkDown": "The environment name that maps to an entry in `pac-scan.config.yaml`.",
+      "options": {
+        "dev": "Development",
+        "uat": "UAT",
+        "prod": "Production"
+      }
+    },
+    {
+      "name": "failOnSeverity",
+      "type": "pickList",
+      "label": "Fail Build On Severity",
+      "defaultValue": "HIGH",
+      "required": false,
+      "helpMarkDown": "The minimum finding severity that fails the pipeline. Overrides the threshold in `pac-scan.config.yaml`. Only applies to the **Run** command.",
+      "visibleRule": "command = run",
+      "options": {
+        "CRITICAL": "Critical only",
+        "HIGH": "High and above",
+        "MEDIUM": "Medium and above"
+      }
+    },
+    {
+      "name": "outputPath",
+      "type": "string",
+      "label": "Report Output Path",
+      "defaultValue": "$(Build.ArtifactStagingDirectory)/pac-scan-report.json",
+      "required": false,
+      "helpMarkDown": "Directory where the JSON scan report will be written. Defaults to the build artifact staging directory. Only applies to the **Run** command.",
+      "visibleRule": "command = run"
+    }
+  ],
+  "execution": {
+    "Node20": {
+      "target": "dist/index.js"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "_comment": "Placeholder dev DLP policy file. Replace with output from: pac-scan fetch --env dev",
+  "fetched_at": "1970-01-01T00:00:00.000Z",
+  "environment": "dev",
+  "environment_id": "00000000-0000-0000-0000-000000000000",
+  "dlp_policies": [],
+  "connectors": [],
+  "csp": {
+    "connect_src": [],
+    "script_src": [],
+    "frame_ancestors": []
+  }
+}

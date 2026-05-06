@@ -1,0 +1,17 @@
+{
+  "name": "pac-scan-azure-task",
+  "version": "1.0.0",
+  "description": "Azure DevOps pipeline task for the pac-scan Power Apps security scanner",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch"
+  },
+  "dependencies": {
+    "azure-pipelines-task-lib": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,3 @@
+This directory will contain the latest snapshot per environment.
+Run `pac-scan fetch --env <env>` to populate it.
+Expected files: dev.json, uat.json, prod.json

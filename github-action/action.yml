@@ -1,0 +1,48 @@
+name: 'Power Apps Code App Security Scan'
+description: >
+  Scans Power Apps Code App source code for DLP violations, CSP violations,
+  hardcoded secrets, insecure fetch calls, and dependency vulnerabilities.
+  Runs fully offline against a previously fetched policy snapshot.
+author: 'pac-scan'
+
+inputs:
+  command:
+    description: >
+      Command to run.
+      'fetch' pulls the latest DLP/CSP policies from Power Platform and saves
+      a local snapshot. 'run' scans source code against the saved snapshot.
+    required: false
+    default: 'run'
+
+  environment:
+    description: >
+      Target environment name (dev, uat, or prod).
+      Must match an entry in pac-scan.config.yaml.
+    required: true
+    default: 'prod'
+
+  fail-on-severity:
+    description: >
+      Minimum finding severity that fails the workflow step.
+      Options: CRITICAL, HIGH, MEDIUM.
+      Overrides the threshold defined in pac-scan.config.yaml.
+    required: false
+    default: 'HIGH'
+
+  output-path:
+    description: >
+      Path to the directory where the JSON scan report will be written.
+      Only applies to the 'run' command.
+    required: false
+    default: './pac-scan-report.json'
+
+outputs:
+  result:
+    description: 'Scan result: PASS or FAIL'
+
+  report-path:
+    description: 'Absolute path to the written JSON report file'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

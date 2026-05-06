@@ -1,0 +1,2 @@
+This directory will contain timestamped historical snapshots per environment.
+Run `pac-scan fetch --env <env>` to populate it.

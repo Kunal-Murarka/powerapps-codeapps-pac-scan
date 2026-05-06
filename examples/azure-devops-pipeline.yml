@@ -1,0 +1,226 @@
+# azure-devops-pipeline.yml
+#
+# Complete Azure Pipelines CI/CD pipeline for a Power Apps Code App.
+#
+# Pipeline flow:
+#   SecurityScan (fetch snapshot → scan code)
+#     → DeployDev
+#       → DeployUAT
+#         → DeployProd
+#
+# Prerequisites:
+#   1. Install pac-scan globally on your build agents (or run the install step
+#      below). Alternatively, add pac-scan as a devDependency and npx it.
+#   2. Install the PACSecurityScan@1 task extension from the Marketplace, or
+#      copy the azure-devops-task/ folder into your pipeline extension.
+#   3. Create pipeline variable groups for environment URLs:
+#        DEV_ENVIRONMENT_URL, UAT_ENVIRONMENT_URL, PROD_ENVIRONMENT_URL
+#   4. Authenticate pac CLI on the build agent using a service principal:
+#        pac auth create --applicationId ... --clientSecret ... --tenant ...
+
+trigger:
+  branches:
+    include:
+      - '*'
+
+variables:
+  # Bump this to force a full snapshot refresh even when the cache is warm.
+  SNAPSHOT_CACHE_KEY: 'pac-scan-snapshot-v1'
+
+stages:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Stage 1: Security Scan
+  # Two jobs: first fetch the live policy snapshot, then scan source code.
+  # Splitting into two jobs means the snapshot fetch runs on a clean agent and
+  # the artifact is passed forward — useful if the fetch needs special auth.
+  # ──────────────────────────────────────────────────────────────────────────
+  - stage: SecurityScan
+    displayName: 'Power Apps Security Scan'
+    jobs:
+
+      - job: FetchPolicy
+        displayName: 'Refresh Policy Snapshot'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: NodeTool@0
+            displayName: 'Use Node.js 18'
+            inputs:
+              versionSpec: '18.x'
+
+          - script: npm install -g pac-scan
+            displayName: 'Install pac-scan CLI'
+
+          # Authenticate pac CLI using a service principal stored in a
+          # variable group (never hardcode credentials in YAML).
+          - script: |
+              pac auth create \
+                --applicationId $(PAC_APP_ID) \
+                --clientSecret $(PAC_CLIENT_SECRET) \
+                --tenant $(PAC_TENANT_ID)
+            displayName: 'Authenticate pac CLI'
+
+          - task: PACSecurityScan@1
+            displayName: 'Fetch Policy Snapshot (prod)'
+            inputs:
+              command: fetch
+              environment: prod
+
+          - publish: .pac-scan/current
+            displayName: 'Publish Snapshot Artifact'
+            artifact: policy-snapshot
+
+      - job: ScanCode
+        displayName: 'Security Scan'
+        dependsOn: FetchPolicy
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: NodeTool@0
+            displayName: 'Use Node.js 18'
+            inputs:
+              versionSpec: '18.x'
+
+          - script: npm install -g pac-scan
+            displayName: 'Install pac-scan CLI'
+
+          - download: current
+            displayName: 'Download Policy Snapshot'
+            artifact: policy-snapshot
+            # Restore the snapshot to the exact path pac-scan expects
+            target: .pac-scan/current
+
+          - task: PACSecurityScan@1
+            displayName: 'Run Security Scan (prod / fail on HIGH+)'
+            inputs:
+              command: run
+              environment: prod
+              failOnSeverity: HIGH
+              outputPath: >
+                $(Build.ArtifactStagingDirectory)/scan-report.json
+
+          # Upload the report even when the scan fails so engineers can
+          # review findings without downloading from the agent.
+          - task: PublishBuildArtifacts@1
+            displayName: 'Upload Scan Report'
+            condition: always()
+            inputs:
+              pathToPublish: >
+                $(Build.ArtifactStagingDirectory)/scan-report.json
+              artifactName: security-scan-report
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Stage 2: Deploy to Dev
+  # Only runs when SecurityScan passes. Uses an unmanaged solution import
+  # so developers can still iterate in the Dev environment.
+  # ──────────────────────────────────────────────────────────────────────────
+  - stage: DeployDev
+    displayName: 'Deploy to Dev'
+    dependsOn: SecurityScan
+    condition: succeeded('SecurityScan')
+    jobs:
+      - job: Deploy
+        displayName: 'Import Solution (Dev — Unmanaged)'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '18.x'
+
+          - script: npm install -g @microsoft/powerplatform-cli
+            displayName: 'Install pac CLI'
+
+          - script: |
+              pac auth create \
+                --applicationId $(PAC_APP_ID) \
+                --clientSecret $(PAC_CLIENT_SECRET) \
+                --tenant $(PAC_TENANT_ID)
+            displayName: 'Authenticate pac CLI'
+
+          - script: |
+              pac solution import \
+                --path $(Build.ArtifactStagingDirectory)/solution.zip \
+                --environment $(DEV_ENVIRONMENT_URL)
+            displayName: 'Deploy to Dev (Unmanaged)'
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Stage 3: Deploy to UAT
+  # Requires a human approval gate configured on the 'uat' environment in
+  # Azure DevOps (Pipelines → Environments → uat → Approvals).
+  # Uses a managed solution import to enforce ALM best practices.
+  # ──────────────────────────────────────────────────────────────────────────
+  - stage: DeployUAT
+    displayName: 'Deploy to UAT'
+    dependsOn: DeployDev
+    condition: succeeded('DeployDev')
+    jobs:
+      - deployment: Deploy
+        displayName: 'Import Solution (UAT — Managed)'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'uat'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: NodeTool@0
+                  inputs:
+                    versionSpec: '18.x'
+
+                - script: npm install -g @microsoft/powerplatform-cli
+                  displayName: 'Install pac CLI'
+
+                - script: |
+                    pac auth create \
+                      --applicationId $(PAC_APP_ID) \
+                      --clientSecret $(PAC_CLIENT_SECRET) \
+                      --tenant $(PAC_TENANT_ID)
+                  displayName: 'Authenticate pac CLI'
+
+                - script: |
+                    pac solution import \
+                      --path $(Build.ArtifactStagingDirectory)/solution.zip \
+                      --environment $(UAT_ENVIRONMENT_URL) \
+                      --managed true
+                  displayName: 'Deploy to UAT (Managed)'
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Stage 4: Deploy to Production
+  # Requires a human approval gate on the 'production' environment.
+  # ──────────────────────────────────────────────────────────────────────────
+  - stage: DeployProd
+    displayName: 'Deploy to Production'
+    dependsOn: DeployUAT
+    condition: succeeded('DeployUAT')
+    jobs:
+      - deployment: Deploy
+        displayName: 'Import Solution (Production — Managed)'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: NodeTool@0
+                  inputs:
+                    versionSpec: '18.x'
+
+                - script: npm install -g @microsoft/powerplatform-cli
+                  displayName: 'Install pac CLI'
+
+                - script: |
+                    pac auth create \
+                      --applicationId $(PAC_APP_ID) \
+                      --clientSecret $(PAC_CLIENT_SECRET) \
+                      --tenant $(PAC_TENANT_ID)
+                  displayName: 'Authenticate pac CLI'
+
+                - script: |
+                    pac solution import \
+                      --path $(Build.ArtifactStagingDirectory)/solution.zip \
+                      --environment $(PROD_ENVIRONMENT_URL) \
+                      --managed true
+                  displayName: 'Deploy to Production (Managed)'

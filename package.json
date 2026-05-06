@@ -1,0 +1,44 @@
+{
+  "name": "powerapps-codeapps-pac-scan",
+  "version": "1.0.0",
+  "description": "Security scanner for Power Apps Code Apps (React+Vite) — catches CSP and DLP violations at build time",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "pac-scan": "./dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "start": "node dist/cli.js",
+    "lint": "tsc --noEmit",
+    "install-hooks": "node scripts/install-hooks.js"
+  },
+  "keywords": [
+    "power-platform",
+    "power-apps",
+    "security",
+    "csp",
+    "dlp",
+    "scanner"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "5.6.2",
+    "commander": "12.1.0",
+    "glob": "11.1.0",
+    "js-yaml": "4.1.1"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "4.0.9",
+    "@types/node": "20.19.0",
+    "typescript": "5.8.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

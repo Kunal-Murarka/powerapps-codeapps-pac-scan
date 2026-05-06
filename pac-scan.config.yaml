@@ -1,0 +1,44 @@
+# pac-scan configuration
+# Security scanner for Power Apps Code Apps (React+Vite)
+# Catches CSP and DLP policy violations at build time / commit time.
+
+environments:
+  dev:
+    dlp_snapshot: .pac-scan/current/dev.json
+    csp_snapshot: .pac-scan/current/dev.json
+    environment_url: https://orgdev.crm.dynamics.com/
+    # environment_id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  # set after first fetch to skip org list look-up
+  uat:
+    dlp_snapshot: .pac-scan/current/uat.json
+    csp_snapshot: .pac-scan/current/uat.json
+    environment_url: https://orguat.crm.dynamics.com/
+  prod:
+    dlp_snapshot: .pac-scan/current/prod.json
+    csp_snapshot: .pac-scan/current/prod.json
+    environment_url: https://orgprod.crm.dynamics.com/
+
+default_environment: prod
+
+# Minimum severity that causes a non-zero exit code (fails CI)
+fail_on_severity:
+  dev: CRITICAL
+  uat: HIGH
+  prod: MEDIUM
+
+# Directories to scan (relative to repo root)
+scan_paths:
+  - src
+
+# File extensions to include in the scan
+scan_extensions:
+  - .ts
+  - .tsx
+  - .js
+  - .jsx
+
+# Patterns to exclude from the scan
+exclude_patterns:
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "**/node_modules/**"
+  - "**/dist/**"

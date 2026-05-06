@@ -1,0 +1,33 @@
+# ── Build outputs ─────────────────────────────────────────────────────────────
+dist/
+*.js.map
+*.d.ts.map
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+azure-devops-task/node_modules/
+github-action/node_modules/
+vscode-extension/node_modules/
+
+# ── pac-scan ──────────────────────────────────────────────────────────────────
+# Commit snapshots for audit trail and offline CI — DO NOT gitignore them.
+# Only auth files should be excluded (they contain service principal secrets).
+.pac-scan/auth/
+
+# ── Reports ───────────────────────────────────────────────────────────────────
+# Scan reports are regenerated on every run; do not commit them.
+pac-scan-report-*.json
+
+# ── OS & editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.vscode/launch.json
+*.suo
+*.user
+.idea/
+
+# ── Environment ───────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
