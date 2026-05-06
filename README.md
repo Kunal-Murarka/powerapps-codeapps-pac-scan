@@ -6,6 +6,13 @@ Catches CSP and DLP policy violations **at build time** — before they surface 
 
 ---
 
+## Prerequisites
+
+- **Node.js 18+**
+- **[pac CLI](https://learn.microsoft.com/power-platform/developer/cli/introduction)** — required only for `pac-scan fetch`. All other commands are fully offline.
+
+---
+
 ## Why it exists
 
 Power Apps Code Apps run inside the Power Apps Player, a tightly sandboxed iframe governed by two policy layers:
@@ -25,10 +32,13 @@ Both layers are configured by Power Platform admins, not developers. pac-scan br
 # 1. Install
 npm install --save-dev pac-scan
 
-# 2. Pull live policies (requires pac CLI + auth)
+# 2. Authenticate pac CLI (one-time)
+pac auth create
+
+# 3. Pull live policies
 npx pac-scan fetch --env prod
 
-# 3. Scan
+# 4. Scan
 npx pac-scan run --env prod
 ```
 
@@ -114,6 +124,14 @@ pac-scan policy --env prod
 pac-scan policy --env dev --format json
 ```
 
+Options:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--env <env>` | `default_environment` from config | Target environment |
+| `--format terminal\|json` | `terminal` | Output format |
+| `--config <path>` | auto-detected | Path to config |
+
 ---
 
 ### `pac-scan validate`
@@ -146,6 +164,7 @@ environments:
     dlp_snapshot:  .pac-scan/current/dev.json
     csp_snapshot:  .pac-scan/current/dev.json
     environment_url: https://org-dev.crm.dynamics.com/
+    # environment_id: 00000000-0000-0000-0000-000000000000  # optional GUID override
   uat:
     dlp_snapshot:  .pac-scan/current/uat.json
     csp_snapshot:  .pac-scan/current/uat.json
@@ -397,27 +416,89 @@ For CI/CD, include a dedicated fetch job (or step) that runs before the scan job
 
 ---
 
-## Snapshot management
+## VS Code extension
 
-Snapshots live in two directories:
+The `vscode-extension/` folder contains a full VS Code extension that:
+
+- **Activates** automatically when a workspace contains `pac-scan.config.yaml`
+- **Squiggles** findings inline (red for CRITICAL/HIGH, yellow for MEDIUM)
+- Shows a **Results panel** (webview) grouped by file — click any finding to jump to it
+- **Status bar** item shows live state: `$(shield) PAC Scan` → `$(sync~spin) PAC: Scanning…` → `$(pass-filled) PAC: Clean` / `$(error) PAC: N issues`
+
+**Commands available in the Command Palette:**
+
+| Command | Description |
+|---|---|
+| `PAC: Run Security Scan` | Runs a full scan on the workspace |
+| `PAC: Scan This File` | Context menu on `.ts` / `.tsx` files |
+| `PAC: Refresh Policy Snapshot` | Runs `pac-scan fetch` for the current env |
+| `PAC: Show Last Report` | Opens the results webview panel |
+
+**Setting:**
+
+```jsonc
+// .vscode/settings.json
+{
+  "pac-scan.environment": "dev"   // override default_environment from config
+}
+```
+
+**To build and install locally:**
+```bash
+cd vscode-extension
+npm install
+npm run build
+# Then in VS Code: Extensions → Install from VSIX (after packaging with vsce)
+```
+
+---
+
+## Repository structure
 
 ```
-.pac-scan/
-├── current/          ← latest snapshot per env (used by `run`)
-│   ├── dev.json
-│   ├── uat.json
-│   └── prod.json
-└── snapshots/        ← full history (used by `diff`)
-    ├── dev/
-    │   └── 2026-05-06-143201.json
-    └── prod/
-        └── 2026-05-06-143305.json
+powerapps-codeapps-pac-scan/
+├── src/
+│   ├── cli.ts                    ← entry point (all 5 commands registered)
+│   ├── commands/                 ← fetch, run, diff, policy, validate
+│   ├── rules/                    ← PAC001–PAC005 scan rules
+│   ├── scanner/                  ← file walker + scan orchestrator
+│   ├── reporter/                 ← terminal + JSON report writers
+│   ├── snapshot/                 ← schema + loader
+│   └── config/                   ← config loader (yaml + validation)
+├── vscode-extension/             ← VS Code extension (diagnostics + webview)
+├── azure-devops-task/            ← Azure Pipelines task (PACSecurityScan@1)
+├── github-action/                ← GitHub Actions action
+├── scripts/                      ← git hook installers (bash / PS / Node)
+├── examples/                     ← complete pipeline YAML examples
+├── .pac-scan/                    ← snapshot storage (commit this directory)
+│   ├── current/<env>.json        ← latest snapshot per environment
+│   └── snapshots/<env>/          ← full history (used by diff)
+└── pac-scan.config.yaml          ← project configuration
 ```
 
-**Commit the snapshots directory.** This gives you:
-- An audit trail of policy changes over time
-- CI agents that can scan without a live `fetch` step
-- The ability to use `pac-scan diff` to trace when a violation was introduced
+---
+
+## Contributing / dev setup
+
+```bash
+# Install root dependencies
+npm install
+
+# Build the CLI
+npm run build
+
+# Run the CLI from source
+node dist/cli.js --help
+
+# Build the VS Code extension
+cd vscode-extension && npm install && npm run build
+
+# Build the Azure DevOps task
+cd azure-devops-task && npm install && npm run build
+
+# Build the GitHub Action
+cd github-action && npm install && npm run build
+```
 
 ---
 
